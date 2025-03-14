@@ -1,2 +1,5 @@
 data/
 **/__pycache__/
+.env
+rag_pipeline.log
+test.py
