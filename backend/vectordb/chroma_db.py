@@ -156,34 +156,6 @@ class ChromaDBManager:
 
         print(f"✅ PDF '{pdf_path}' stored as '{collection_name}' in ChromaDB!")
 
-    # def query(self, query_text, document_id=None, top_k=3):
-    #     """Retrieve the top-k most similar documents for a query. Supports querying a specific document."""
-        
-    #     query_embedding = self.embedder.get_embedding(query_text)
-
-    #     existing_collections = self.client.list_collections()  # ✅ Get all collection names
-
-    #     if document_id:
-    #         # Query a specific document collection
-    #         collection_name = f"doc_{document_id}"
-
-    #         if collection_name not in existing_collections:  # ✅ Check if collection exists
-    #             raise ValueError(f"Error: Document ID '{document_id}' does not exist in ChromaDB.")
-
-    #         collection = self.client.get_collection(collection_name)  # ✅ Explicitly get the collection
-    #         results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-        
-    #     else:
-    #         # Query across all document collections
-    #         results = []
-    #         for collection_name in existing_collections:
-    #             collection = self.client.get_collection(collection_name)  # ✅ Explicitly fetch collection
-    #             res = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-    #             if res and "documents" in res:
-    #                 results.extend(res["documents"][0])  # Merge results
-
-    #     return results if results else []
-
     def query(self, query_text, document_id=None, top_k=3):
         """Retrieve the top-k most similar documents for a query. Supports querying a specific document."""
         query_embedding = self.embedder.get_embedding(query_text)
@@ -192,7 +164,15 @@ class ChromaDBManager:
             # Query a specific document collection
             collection_name = f"doc_{document_id}"
             collection = self.client.get_collection(collection_name)  # ✅ Explicitly get the collection
-            results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
+
+            available_chunks = collection.count()
+            print(f"📚 Querying document '{document_id}' with {available_chunks} chunks available.")
+
+            if available_chunks == 0:
+                return ["No documents found."]
+
+
+            results = collection.query(query_embeddings=[query_embedding], n_results=min(top_k, available_chunks)) 
         
         else:
             # Query across all document collections
@@ -200,9 +180,17 @@ class ChromaDBManager:
             collection_names = self.client.list_collections()  # ✅ Extract collection names
             for collection_name in collection_names:
                 collection = self.client.get_collection(collection_name)  # ✅ Explicitly fetch collection
-                res = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-                if res and "documents" in res:
-                    results.extend(res["documents"][0])  # Merge results
+                available_chunks = collection.count()
+                # res = collection.query(query_embeddings=[query_embedding], n_results=top_k)
+                # if res and "documents" in res:
+                #     results.extend(res["documents"][0])  # Merge results
+                print(f"📚 Querying collection '{collection_name}' with {available_chunks} chunks available.")
+
+                if available_chunks > 0:
+                    res = collection.query(query_embeddings=[query_embedding], n_results=min(top_k, available_chunks))
+                    if res and "documents" in res:
+                        results.extend(res["documents"][0])
+
 
         return results if results else []
 
