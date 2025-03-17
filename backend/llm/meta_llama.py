@@ -89,8 +89,11 @@ def ask_meta_llama_rag(query, top_k=3):
 
     full_prompt = (
         f"Use the provided document context to answer the query in Markdown format.\n"
-        f"If a table is present in the document, extract it in its entirety without modifying the format.\n"
-        f"If no table exists, do not respond with statements like 'There is no table present in the provided document context.'\n"
+        # f"If a table is present in the document, extract it in its entirety without modifying the format. Also generate a wel-structured Markdowwn format tabel for it.\n"
+        f"If the document contains a table, extract it **in its entirety**, keeping its original format.\n"
+        # f"If no table exists, do not respond with statements like 'There is no table present in the provided document context.'\n"
+        f"Additionally, **convert the extracted table into a well-structured Markdown table** for better readability.\n"
+        f"If no table is present, proceed without mentioning its absence.\n\n"
         f"Context:\n{context}\n\n"
         f"User Query:\n{query}\n\n"
         f"Generate a well-structured and detailed response in Markdown format."
