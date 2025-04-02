@@ -12,77 +12,57 @@ client = Together(api_key=TOGETHER_API_KEY)
 vectordb = ChromaDBManager()
 embedder = Embedder()
 
-# def ask_meta_llama_rag(query, top_k=3):
-#     """Retrieve relevant documents and generate a response."""
-#     retrieved_docs = vectordb.query(query, top_k=top_k)
-
-#     # Construct system prompt with retrieved context
-#     context = "\n".join(retrieved_docs) if retrieved_docs else "No relevant information found."
-#     full_prompt = (
-#         f"Use the following document context to answer the query.\n"
-#         f"Context:\n{context}\n\n"
-#         f"User Query:\n{query}\n\n"
-#         f"Provide a detailed and complete response."
-#     )
-
-#     try:
-#         response = client.chat.completions.create(
-#             model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-#             messages=[{"role": "user", "content": full_prompt}],
-#             max_tokens=None,
-#             temperature=0.7,
-#             top_p=0.7,
-#             top_k=50,
-#             repetition_penalty=1.05,
-#             stop=["<|end_of_sentence|>"],
-#             stream=False
-#         )
-
-#         return response.choices[0].message.content
-
-#     except Exception as e:
-#         print("Error:", e)
-#         return "Sorry, I encountered an error."
-
 # For Cosin-similarity
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-# def check_document_relevance(query, documents):
-#     """Check document relevance based on cosine similarity with the query"""
-#     if not documents:
-#         return ["No relevant documents found."]
+def check_document_relevance(query, retrieved_docs, min_similarity=0.4):
+    """Filters documents based on cosine similarity with the query.
     
-#     query_vector = np.array(embedder.get_embedding(query)).reshape(1, -1)  # ✅ Convert to NumPy array
-#     doc_vectors = np.array([embedder.get_embedding(doc) for doc in documents])  # ✅ Convert to NumPy array
-
-#     if doc_vectors.ndim == 1:  # If there's only one document, reshape it
-#         doc_vectors = doc_vectors.reshape(1, -1)
-
-#     similarities = cosine_similarity(query_vector, doc_vectors)
-#     sorted_docs = [documents[i] for i in np.argsort(similarities[0], axis=0)[::-1]]  # Sort by similarity
-
-#     return sorted_docs[:3]  # Return top 3 most relevant documents
-
-
-##################### for experiment(uncomment the above function later) ###################
-def check_document_relevance(query, documents, min_similarity=0.7):
-    """Filters documents based on cosine similarity with the query."""
-    if not documents:
+    Args:
+        query (str): The user's query.
+        retrieved_docs (dict or list): Output from ChromaDB.query():
+            - If `document_id` was given: ChromaDB dict ({"documents": [...], ...}).
+            - If no `document_id`: Flattened list of document texts.
+        min_similarity (float): Minimum similarity threshold (default: 0.4).
+    
+    Returns:
+        List[str]: Top relevant documents (or a fallback message if none found).
+    """
+    if not retrieved_docs:
         return ["No relevant documents found."]
     
+    # Case 1: ChromaDB dictionary (when querying a specific document)
+    if isinstance(retrieved_docs, dict) and "documents" in retrieved_docs:
+        documents = retrieved_docs["documents"][0]  # Extract inner list
+    # Case 2: Already a list (when querying all documents)
+    elif isinstance(retrieved_docs, list):
+        documents = retrieved_docs
+    else:
+        return ["Invalid document format."]
+    
+    # Compute query embedding
     query_vector = np.array(embedder.get_embedding(query)).reshape(1, -1)
+    
+    # Compute embeddings for all retrieved docs
     doc_vectors = np.array([embedder.get_embedding(doc) for doc in documents])
-
+    
     if doc_vectors.ndim == 1:
         doc_vectors = doc_vectors.reshape(1, -1)
-
-    similarities = cosine_similarity(query_vector, doc_vectors)[0]
     
-    # Select only documents with similarity above threshold
-    filtered_docs = [documents[i] for i in np.argsort(similarities)[::-1] if similarities[i] >= min_similarity]
+    # Compute cosine similarities
+    similarities = cosine_similarity(query_vector, doc_vectors)[0]
+    print(f"Similarities: {similarities}")
+    
+    # Pair each document with its similarity score and filter
+    scored_docs = list(zip(documents, similarities))
+    filtered_docs = [
+        doc for doc, sim in sorted(scored_docs, key=lambda x: x[1], reverse=True)
+        if sim >= min_similarity
+    ]
     
     return filtered_docs[:5] if filtered_docs else ["No highly relevant documents found."]
+
 
 def construct_prompt(query, context, previous_conversations=""):
     """Constructs an optimized prompt with improved table extraction."""
@@ -96,63 +76,6 @@ def construct_prompt(query, context, previous_conversations=""):
         f"- Ensure the response is **well-organized** and **informative**."
     )
     return full_prompt
-
-
-
-# Main RAG part
-# def ask_meta_llama_rag(query, top_k=3):
-#     """Retrieve relevant documents and generate a response."""
-#     retrieved_docs = vectordb.query(query, top_k=top_k)
-
-#     # Improve relevance checking and ensure content quality
-#     context = check_document_relevance(query, retrieved_docs)
-
-#     # Step 1: Check if the retrieved docs are actually relevant
-#     # if retrieved_docs and any(len(doc.strip()) > 10 for doc in retrieved_docs):
-#     #     context = "\n".join(retrieved_docs)
-#     # else:
-#     #     context = "No relevant information found in the document."
-
-#     # Step 2: Construct the system prompt
-#     # full_prompt = (
-#     #     f"Use the following document context to answer the query in Markdown format.\n"
-#     #     f"If the document contains a table, extract it completely without altering the format, otherwise no need to reponse like "There is no table present in the provided document context.".\n"
-#     #     f"Context:\n{context}\n\n"
-#     #     f"User Query:\n{query}\n\n"
-#     #     f"Provide a structured and detailed response in Markdown format."
-#     # )
-
-#     full_prompt = (
-#         f"Use the provided document context to answer the query in Markdown format.\n"
-#         # f"If a table is present in the document, extract it in its entirety without modifying the format. Also generate a wel-structured Markdowwn format tabel for it.\n"
-#         f"If the document contains a table, extract it **in its entirety**, keeping its original format.\n"
-#         # f"If no table exists, do not respond with statements like 'There is no table present in the provided document context.'\n"
-#         f"Additionally, **convert the extracted table into a well-structured Markdown table** for better readability.\n"
-#         f"If no table is present, proceed without mentioning its absence.\n\n"
-#         f"Context:\n{context}\n\n"
-#         f"User Query:\n{query}\n\n"
-#         f"Generate a well-structured and detailed response in Markdown format."
-#     )
-
-
-#     try:
-#         response = client.chat.completions.create(
-#             model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-#             messages=[{"role": "user", "content": full_prompt}],
-#             max_tokens=None,  # Set a limit to prevent incomplete answers
-#             temperature=0.7,
-#             top_p=0.9,
-#             top_k=50,
-#             repetition_penalty=1.05,
-#             stop=["<|end_of_sentence|>"],
-#             stream=False
-#         )
-
-#         return response.choices[0].message.content.strip()
-
-#     except Exception as e:
-#         print("Error:", e)
-#         return "Sorry, I encountered an error."
 
 def ask_meta_llama_rag(query, previous_conversations="", context=""):
     """Retrieve relevant documents and generate a structured response."""
@@ -183,4 +106,3 @@ def ask_meta_llama_rag(query, previous_conversations="", context=""):
 # Example usage
 if __name__ == "__main__":
     print(ask_meta_llama_rag("What is the treatement for Chicken pox?"))
-
