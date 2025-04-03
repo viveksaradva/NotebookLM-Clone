@@ -84,9 +84,18 @@ def rag_query(request: QueryRequest):
 
     # Generate LLM response
     response = ask_meta_llama_rag(full_prompt)
+    print(f"Response: \n{response}")
 
     # Update chat memory
     memory_instance.save_context({"input": query}, {"output": response})
+
+    if not retrieved_docs:
+        return {
+            "query": query,
+            "response": "No relevant documents found for this query.",
+            "session_id": session_id,
+            "chat_history": memory_instance.load_memory_variables({}).get("history", "")
+        }
 
     return {
         "query": query,
@@ -94,6 +103,22 @@ def rag_query(request: QueryRequest):
         "session_id": session_id,
         "chat_history": memory_instance.load_memory_variables({}).get("history", "")
     }
+########################################################
+class WebArticleRequest(BaseModel):
+    url: str
+
+@app.post("/upload_web_article/")
+def upload_web_article(request: WebArticleRequest):
+    document_id = str(uuid.uuid4())[:8]  # Generate unique ID for the web article
+    
+    result = vectordb.add_web_article(request.url, document_id)
+    
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    
+    return result
+#################################################################
+
 
 
 ##############
