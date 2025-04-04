@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from backend.embeddings.embedder import Embedder
-from langchain_community.document_loaders import WebBaseLoader
+from langsmith import traceable
 from tqdm import tqdm
 
 class ChromaDBManager:
@@ -98,6 +98,7 @@ class ChromaDBManager:
 
         return results if results else []
 
+    @traceable(run_type="retriever")
     def get_documents(self, document_id):
         """Retrieve all stored documents (chunks) for a given document_id."""
         collection_name = f"doc_{document_id}"
@@ -154,6 +155,8 @@ class ChromaDBManager:
         collection = self.client.get_or_create_collection(name=collection_name)
 
         article_data = self.embedder.load_web_article(url)
+
+        print(f"\n\n\narticle_data: {article_data}\n\n\n")
 
         web_article_chunks = article_data["chunks"]
         web_article_chunks = [chunk["text"] if isinstance(chunk, dict) else chunk for chunk in web_article_chunks]

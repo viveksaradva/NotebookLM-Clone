@@ -1,8 +1,10 @@
 import os
 import sys
 import uuid
-from fastapi import FastAPI, HTTPException, UploadFile, File
+import logging
 from pydantic import BaseModel
+from langsmith import traceable
+from fastapi import FastAPI, HTTPException, UploadFile, File
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from backend.vectordb.chroma_db import ChromaDBManager
@@ -11,6 +13,7 @@ from backend.utils.chat_memory import get_session_memory, reset_session_memory
 
 app = FastAPI()
 vectordb = ChromaDBManager()
+logger = logging.getLogger("uvicorn")
 
 ###########################
 # PDF Upload & Processing #
@@ -48,6 +51,7 @@ class QueryRequest(BaseModel):
     document_id: str = None
     session_id: str
 
+@traceable(run_type="chain")  
 @app.post("/rag")
 def rag_query(request: QueryRequest):
     query = request.query
@@ -59,7 +63,11 @@ def rag_query(request: QueryRequest):
 
     # Retrieve session memory
     memory_instance = get_session_memory(session_id)
-    previous_context = memory_instance.load_memory_variables({}).get("history", "")
+    previous_context = memory_instance.load_memory_variables({}).get("history", [])
+    if isinstance(previous_context, list):
+        previous_context = "\n".join(
+            [msg.content for msg in previous_context if hasattr(msg, "content")]
+        )
 
     # 🔥 Hybrid Retrieval: Vector Similarity + Keyword Matching
     retrieved_docs, retrieved_metadata = vectordb.hybrid_query(query, document_id=document_id, top_k=5) 
@@ -70,8 +78,9 @@ def rag_query(request: QueryRequest):
     # Format metadata into context
     context = "\n".join([
         f"{doc}\n[Keywords: {', '.join(metadata.get('keywords', []))}]"  
-        for doc, metadata in zip(retrieved_docs, retrieved_metadata)  
+        for doc, metadata in zip(retrieved_docs, retrieved_metadata or [{}])  
     ])
+ 
  
     # Construct prompt with conversation + document context
     full_prompt = (
@@ -84,7 +93,7 @@ def rag_query(request: QueryRequest):
 
     # Generate LLM response
     response = ask_meta_llama_rag(full_prompt)
-    print(f"Response: \n{response}")
+    logger.info(f"[Session {session_id}] LLM Response:\n{response}")
 
     # Update chat memory
     memory_instance.save_context({"input": query}, {"output": response})
