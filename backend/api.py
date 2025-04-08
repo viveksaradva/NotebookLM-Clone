@@ -8,8 +8,9 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from backend.vectordb.chroma_db import ChromaDBManager
-from backend.llm.meta_llama import ask_meta_llama_rag, check_document_relevance
 from backend.utils.chat_memory import get_session_memory, reset_session_memory
+from backend.llm.prompts import construct_prompt
+from backend.llm.models import get_together_meta_llama_response
 
 app = FastAPI()
 vectordb = ChromaDBManager()
@@ -72,8 +73,6 @@ def rag_query(request: QueryRequest):
     # 🔥 Hybrid Retrieval: Vector Similarity + Keyword Matching
     retrieved_docs, retrieved_metadata = vectordb.hybrid_query(query, document_id=document_id, top_k=5) 
     
-    # Extract content and metadata (TF-IDF keywords)
-    filtered_docs = check_document_relevance(query, retrieved_docs)
     
     # Format metadata into context
     context = "\n".join([
@@ -81,18 +80,10 @@ def rag_query(request: QueryRequest):
         for doc, metadata in zip(retrieved_docs, retrieved_metadata or [{}])  
     ])
  
- 
-    # Construct prompt with conversation + document context
-    full_prompt = (
-        f"Use the following conversation history and document context to answer the user's question.\n\n"
-        f"### Conversation History:\n{previous_context}\n\n"
-        f"### Document Context:\n{context}\n\n"
-        f"### User Query:\n{query}\n\n"
-        f"Provide a structured response in Markdown format."
-    )
 
     # Generate LLM response
-    response = ask_meta_llama_rag(full_prompt)
+    full_prompt = construct_prompt(query, context, previous_context)
+    response = get_together_meta_llama_response(full_prompt)
     logger.info(f"[Session {session_id}] LLM Response:\n{response}")
 
     # Update chat memory

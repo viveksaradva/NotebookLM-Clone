@@ -10,9 +10,6 @@ class Embedder:
         self.vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 
-    # def get_embedding(self, text):
-    #     """Convert text into an embedding vector."""
-    #     return self.model.encode(text).tolist() if text.strip() else None
     def get_embedding(self, text):
         """Convert text into an embedding vector, ensuring valid input."""
         cleaned_text = text.strip()

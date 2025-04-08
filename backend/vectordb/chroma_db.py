@@ -17,6 +17,12 @@ class ChromaDBManager:
     def _get_collection(self, document_id):
         return self.client.get_collection(f"doc_{document_id}")
 
+    def _sanitize_metadata(self, metadata_list):
+        for meta in metadata_list:
+            for key, value in meta.items():
+                if isinstance(value, list):
+                    meta[key] = ", ".join(value)
+
     def add_pdf(self, pdf_path, document_id):
         """Extracts text from a PDF, chunks it, embeds it, and stores it under a unique document_id."""
         collection_name = f"doc_{document_id}"  # Unique collection for each PDF
@@ -49,11 +55,14 @@ class ChromaDBManager:
 
             # Process in batches
             if len(batch_docs) >= batch_size:
+                self._sanitize_metadata(batch_metadata)
                 collection.add(ids=batch_ids, embeddings=batch_embeddings, documents=batch_docs, metadatas=batch_metadata)
                 batch_docs, batch_ids, batch_embeddings, batch_metadata = [], [], [], []
 
+
         # Insert remaining documents
         if batch_docs:
+            self._sanitize_metadata(batch_metadata)
             collection.add(ids=batch_ids, embeddings=batch_embeddings, documents=batch_docs, metadatas=batch_metadata)
 
         print(f"✅ PDF '{pdf_path}' stored as '{collection_name}' in ChromaDB!")
