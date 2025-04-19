@@ -1,5 +1,6 @@
 import chromadb
 import os
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 import sys
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -84,7 +85,7 @@ class ChromaDBManager:
                 return ["No documents found."]
 
             results = collection.query(query_embeddings=[query_embedding], n_results=min(top_k, available_chunks))
-        
+
         else:
             # Query across all document collections
             results = []
@@ -120,43 +121,65 @@ class ChromaDBManager:
                 return results["documents"]
         except Exception as e:
             print(f"Error retrieving documents for {document_id}: {e}")
-        
+
         return []
-    
+
     def hybrid_query(self, query_text, document_id=None, top_k=5):
-        """Performs a hybrid search using embeddings + keyword matching."""
+        """Performs a hybrid search using embeddings + keyword matching.
+
+        If keywords match, it prioritizes those documents. If no keywords match,
+        it falls back to returning all vector similarity results.
+        """
         query_embedding = self.embedder.get_embedding(query_text)
-        query_keywords = set(query_text.lower().split())
+
+        # Remove stopwords from query for more meaningful matching
+        query_keywords = set(
+            word for word in query_text.lower().split() if word not in ENGLISH_STOP_WORDS
+        )
 
         retrieved_docs = []
         retrieved_metadata = []
 
-        if document_id:
-            collection = self._get_collection(document_id)
-            if collection.count() > 0:
-                res = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-                if res and "documents" in res:
-                    for doc, metadata in zip(res["documents"][0], res["metadatas"][0]):
-                        doc_keywords = set(metadata["keywords"])
-                        if query_keywords & doc_keywords:  # Check if any keywords match
-                            retrieved_docs.append(doc)
-                            retrieved_metadata.append(metadata)
+        collections = []
 
-        else:
-            collection_names = self.client.list_collections()
-            for collection_name in collection_names:
+        if document_id:
+            try:
                 collection = self._get_collection(document_id)
-                if collection.count() > 0:
-                    res = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-                    if res and "documents" in res:
-                        for doc, metadata in zip(res["documents"][0], res["metadatas"][0]):
-                            doc_keywords = set(metadata["keywords"])
-                            if query_keywords & doc_keywords:
-                                retrieved_docs.append(doc)
-                                retrieved_metadata.append(metadata)
+                collections = [(document_id, collection)]
+            except Exception as e:
+                print(f"❌ Collection for document_id '{document_id}' not found: {e}")
+                return [], []
+        else:
+            collections = [(col.name.replace("doc_", ""), self.client.get_collection(col.name))
+                        for col in self.client.list_collections()]
+
+        for doc_id, collection in collections:
+            total_chunks = collection.count()
+            if total_chunks == 0:
+                print(f"⚠️ Skipping '{doc_id}' — No chunks available.")
+                continue
+
+            res = collection.query(query_embeddings=[query_embedding], n_results=min(top_k, total_chunks))
+
+            if res and "documents" in res:
+                for doc, metadata in zip(res["documents"][0], res["metadatas"][0]):
+                    keywords_field = metadata.get("keywords", "")
+                    # Split if stored as comma-separated string
+                    doc_keywords = (
+                        set(keywords_field.split(", ")) if isinstance(keywords_field, str) else set(keywords_field)
+                    )
+
+                    # Check for keyword intersection, but don't filter if no matches
+                    # This makes hybrid_query behave more like query when no keywords match
+                    keyword_match = query_keywords & doc_keywords
+
+                    # Always include the document in results
+                    retrieved_docs.append(doc)
+                    retrieved_metadata.append(metadata)
 
         return retrieved_docs, retrieved_metadata
-    
+
+
     def add_web_article(self, url: str, document_id: str):
         """Loads web content, embeds it, and stores it in ChromaDB."""
         # Get the collection
@@ -196,7 +219,7 @@ class ChromaDBManager:
             # Ensure metadata values are stored as valid types
             for meta in batch_metadata:
                 for key, value in meta.items():
-                    if isinstance(value, list):  
+                    if isinstance(value, list):
                         meta[key] = ", ".join(value)
 
             # Process in batches
@@ -211,3 +234,10 @@ class ChromaDBManager:
         print(f"✅ Web article '{url}' stored as '{collection_name}' in ChromaDB!")
 
         return {"message": "Web article added successfully!", "document_id": document_id}
+
+if __name__ == "__main__":
+    query="Summarize this article for me!"
+    document_id="2595e638"
+
+    demo = ChromaDBManager()
+    print(demo.query(query, document_id=document_id))

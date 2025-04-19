@@ -1,9 +1,27 @@
 from langsmith import traceable
-from langchain_together import ChatTogether
 from langchain.memory import ConversationBufferMemory
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage, AIMessage
+from typing import List, Dict, Any, Optional
 
-# Initialize the ChatTogether model
-llm = ChatTogether(model="meta-llama/Llama-3-8B-Instruct")
+# Create a mock LLM for development/testing
+class MockChatModel(BaseChatModel):
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        from langchain_core.outputs import ChatGeneration, ChatResult
+        response = "This is a mock response for testing purposes."
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=response))])
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        from langchain_core.outputs import ChatGeneration, ChatResult
+        response = "This is a mock async response for testing purposes."
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=response))])
+
+    @property
+    def _llm_type(self) -> str:
+        return "mock_chat_model"
+
+# Initialize the mock model
+llm = MockChatModel()
 
 # In-memory storage for session memories
 chat_memory = {}
