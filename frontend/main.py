@@ -10,7 +10,7 @@ import redis
 load_dotenv()
 
 # API URL
-API_URL = "http://127.0.0.1:8005/api/v1"
+API_URL = "http://127.0.0.1:8006/api/v1"
 
 # Redis connection for session management
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -20,8 +20,19 @@ redis_client = redis.from_url(redis_url)
 st.set_page_config(
     page_title="DocuMind",
     page_icon="📚",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# Hide the default Streamlit navigation
+hide_streamlit_style = """
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+.stDeployButton {display:none;}
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # Initialize session state
 if "session_id" not in st.session_state:
@@ -197,6 +208,15 @@ def get_document_highlights(document_id):
     """Get all highlights for a document."""
     return api_request("GET", f"/highlights/document/{document_id}")
 
+def delete_document(document_id):
+    """Delete a document."""
+    response = api_request("DELETE", f"/documents/{document_id}")
+    # Clear current document if it's the one being deleted
+    if st.session_state.current_document_id == document_id:
+        st.session_state.current_document_id = None
+        st.session_state.chat_history = []
+    return response
+
 # Summary functions
 def generate_document_summary(document_id, max_length=500):
     """Generate a summary for a document."""
@@ -224,47 +244,75 @@ def generate_study_guide(document_id, format="markdown"):
 
 # Sidebar
 with st.sidebar:
-    st.title("📚 DocuMind")
-    st.write(f"Session ID: {st.session_state.session_id[:8]}...")
+    # App title with logo
+    st.markdown("""
+    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+        <h1 style="margin: 0; font-size: 1.8rem;">📚 DocuMind</h1>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.subheader("📄 Documents")
+    # Session info in a cleaner format
+    session_id_short = st.session_state.session_id.split('_')[1][:6]
+    st.markdown(f"<div style='font-size: 0.8rem; color: #888; margin-bottom: 20px;'>Session: <span style='color: #4CAF50; font-family: monospace;'>{session_id_short}</span></div>", unsafe_allow_html=True)
+
+    # Documents section with better styling
+    st.markdown("<div style='margin-top: 10px; margin-bottom: 15px; font-weight: bold; font-size: 1.1rem;'>📁 Add Documents</div>", unsafe_allow_html=True)
 
     # Upload document
-    with st.expander("Upload Document", expanded=False):
-        uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
+    with st.expander("Upload PDF Document", expanded=False):
+        uploaded_file = st.file_uploader("Select PDF file", type=["pdf"])
 
         if uploaded_file:
-            if st.button("Process PDF"):
-                with st.spinner("Processing PDF..."):
-                    result = upload_pdf(uploaded_file)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"Selected: **{uploaded_file.name}**")
+            with col2:
+                if st.button("💾 Process", key="process_pdf", type="primary"):
+                    with st.spinner("Processing PDF..."):
+                        result = upload_pdf(uploaded_file)
 
-                    if result:
-                        st.success(f"PDF uploaded! Document ID: {result['document_id']}")
+                        if result:
+                            st.success(f"PDF uploaded successfully!")
 
     # Add web article
     with st.expander("Add Web Article", expanded=False):
-        url = st.text_input("Web Article URL")
+        url = st.text_input("Enter article URL", placeholder="https://example.com/article")
 
         if url:
-            if st.button("Process URL"):
-                with st.spinner("Processing URL..."):
-                    result = add_web_article(url)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"URL: **{url[:30]}{'...' if len(url) > 30 else ''}**")
+            with col2:
+                if st.button("🌐 Process", key="process_url", type="primary"):
+                    with st.spinner("Processing article..."):
+                        result = add_web_article(url)
 
-                    if result:
-                        st.success(f"Web article added! Document ID: {result['document_id']}")
-
+                        if result:
+                            st.success(f"Article added successfully!")
     # Document list
-    st.subheader("My Documents")
+    st.markdown("<div style='margin-top: 20px; margin-bottom: 10px; font-weight: bold; font-size: 1.1rem;'>📚 My Documents</div>", unsafe_allow_html=True)
     documents = get_user_documents()
 
     if documents:
         for doc in documents:
-            if st.button(f"📄 {doc['title']}", key=f"doc_{doc['document_id']}"):
+            # Create a more attractive document button
+            doc_title = doc['title']
+            if len(doc_title) > 30:
+                doc_title = doc_title[:27] + "..."
+
+            if st.button(
+                f"📄 {doc_title}",
+                key=f"doc_{doc['document_id']}",
+                help=f"Open {doc['title']}"
+            ):
                 st.session_state.current_document_id = doc['document_id']
                 st.rerun()
 
-    # Reset session
-    if st.button("Reset Session"):
+    # Add some space
+    st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
+
+    # Reset session with a nicer button
+    if st.button("🔄 Reset Session", help="Clear all session data and start fresh", type="secondary"):
         reset_session()
         st.rerun()
 

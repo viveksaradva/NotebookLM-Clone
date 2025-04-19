@@ -7,13 +7,13 @@ def run_backend():
     uvicorn.run(
         "backend.api.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=8006,
         reload=True
     )
 
 def run_frontend():
     """Run the Streamlit frontend."""
-    os.system("streamlit run frontend/main.py")
+    os.system("streamlit run frontend/Home.py")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run DocuMind application")
@@ -24,9 +24,9 @@ if __name__ == "__main__":
         default="all",
         help="Component to run (backend, frontend, or all)"
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.component == "backend":
         run_backend()
     elif args.component == "frontend":
@@ -34,12 +34,12 @@ if __name__ == "__main__":
     else:
         # Run both in separate processes
         import multiprocessing
-        
+
         backend_process = multiprocessing.Process(target=run_backend)
         frontend_process = multiprocessing.Process(target=run_frontend)
-        
+
         backend_process.start()
         frontend_process.start()
-        
+
         backend_process.join()
         frontend_process.join()

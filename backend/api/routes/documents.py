@@ -116,3 +116,21 @@ async def get_document_chunks(
 
     # No authorization check since we removed authentication
     return document_service.get_document_chunks(document_id)
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    document_id: str,
+    session_id: str = Query(..., description="Unique session ID"),
+    db: Session = Depends(get_db)
+):
+    """Delete a document by ID."""
+    document = document_service.get_document(db, document_id)
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document with ID {document_id} not found"
+        )
+
+    # No authorization check since we removed authentication
+    document_service.delete_document(db, document_id)
