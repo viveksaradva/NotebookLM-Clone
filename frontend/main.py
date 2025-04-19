@@ -167,7 +167,7 @@ def reset_chat_session():
     stored_session_id = redis_client.get(f"chat_session:{st.session_state.session_id}")
     if stored_session_id:
         session_id = stored_session_id.decode('utf-8')
-        response = api_request("POST", f"/chat/reset-session?session_id={session_id}")
+        response = api_request("POST", f"/chat/reset-session?session_id={session_id}&user_session_id={st.session_state.session_id}")
 
         if response:
             st.session_state.chat_history = []
@@ -269,13 +269,10 @@ with st.sidebar:
         st.rerun()
 
 # Main content
-st.write(f"Debug - Current Document ID: {st.session_state.current_document_id}")
-
 # Force update document ID if needed (temporary fix)
 if st.session_state.current_document_id and st.session_state.current_document_id not in [doc['document_id'] for doc in documents if documents]:
     if documents:
         st.session_state.current_document_id = documents[0]['document_id']
-        st.info(f"Updated document ID to: {st.session_state.current_document_id}")
 
 if st.session_state.current_document_id:
     # Document tabs
